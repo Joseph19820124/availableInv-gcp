@@ -61,6 +61,30 @@ resource "google_service_account_iam_member" "deploy_actas_run" {
   member             = "serviceAccount:${google_service_account.deploy.email}"
 }
 
+# Cloud Run 运行身份需能从 Artifact Registry 拉镜像
+resource "google_artifact_registry_repository_iam_member" "run_reader" {
+  location   = google_artifact_registry_repository.repo.location
+  repository = google_artifact_registry_repository.repo.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.run.email}"
+}
+
+# Cloud Run 服务代理拉取镜像也需要 AR reader
+resource "google_artifact_registry_repository_iam_member" "run_agent_reader" {
+  location   = google_artifact_registry_repository.repo.location
+  repository = google_artifact_registry_repository.repo.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:service-${data.google_project.this.number}@serverless-robot-prod.iam.gserviceaccount.com"
+}
+
+# Cloud Deploy 执行账号部署前要校验镜像可读,也需要 AR reader
+resource "google_artifact_registry_repository_iam_member" "deploy_reader" {
+  location   = google_artifact_registry_repository.repo.location
+  repository = google_artifact_registry_repository.repo.repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.deploy.email}"
+}
+
 # ---- build SA 权限 ----
 resource "google_project_iam_member" "build_ar_writer" {
   project = var.project_id
