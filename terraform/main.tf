@@ -104,6 +104,13 @@ resource "google_project_iam_member" "build_logs" {
   member  = "serviceAccount:${google_service_account.build.email}"
 }
 
+# 创建 Cloud Deploy 发布时要把源上传到 Cloud Deploy 暂存桶
+resource "google_project_iam_member" "build_storage" {
+  project = var.project_id
+  role    = "roles/storage.admin"
+  member  = "serviceAccount:${google_service_account.build.email}"
+}
+
 # build SA 创建发布时需能以 deploy SA 执行
 resource "google_service_account_iam_member" "build_actas_deploy" {
   service_account_id = google_service_account.deploy.name
