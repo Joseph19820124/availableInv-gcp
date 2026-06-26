@@ -31,6 +31,7 @@ public class InventoryController {
             "sku", sku,
             "availableQuantity", FIXED_AVAILABLE_QTY,
             "source", "fake",
+            "deployedBy", "cloud-build-auto",
             "timestamp", Instant.now().toString()
         );
     }
