@@ -1,0 +1,10 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: availableinv
+# Cloud Deploy 用 skaffold 渲染 + 部署到 Cloud Run
+manifests:
+  rawYaml:
+    - run-service.yaml
+deploy:
+  cloudrun: {}
