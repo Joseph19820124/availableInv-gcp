@@ -19,36 +19,36 @@ Spring Boot 3 / Java 17,端口 8080。
 |-----|-----|
 | ECR | **Artifact Registry** |
 | ECS Fargate + ALB | **Cloud Run** |
-| CodePipeline + CodeBuild | **Cloud Build** |
+| CodePipeline(编排器)| **GitHub Actions**(编排器)|
+| CodeBuild | GitHub Actions runner 里 `docker build` |
 | CodeDeploy(ECS 部署)| **Cloud Deploy**(渐进式发布)|
 | Terraform S3 + DynamoDB | **Terraform GCS backend** |
 
 ```
-GitHub push ─▶ Cloud Build ─▶ build image ─▶ Artifact Registry
-                    └─▶ Cloud Deploy release ─▶ Cloud Run (rollout)
+GitHub push ─▶ GitHub Actions (.github/workflows/deploy.yml)
+                 ├─ WIF 免密钥认证到 GCP
+                 ├─ docker build → push Artifact Registry
+                 └─ gcloud deploy releases create ─▶ Cloud Deploy ─▶ Cloud Run (rollout)
 ```
+
+> CI/CD 编排用 **GitHub Actions**(取代 AWS 的 CodePipeline)。GitHub Actions 负责 Source+Build 并"交棒"给 **Cloud Deploy** 做发布;Cloud Deploy 再 rollout 到 **Cloud Run**。
 
 ## 文件
 
 - `Dockerfile` / `build.gradle` / `src/` —— Java 服务(同 AWS 版)
-- `cloudbuild.yaml` —— Cloud Build:构建 + 推 AR + 创建 Cloud Deploy 发布
-- `clouddeploy` 流水线/目标 —— 由 `terraform/` 管理
+- `.github/workflows/deploy.yml` —— **GitHub Actions** 编排:WIF 认证 → 构建推 AR → 建 Cloud Deploy 发布
 - `skaffold.yaml` + `run-service.yaml` —— Cloud Deploy 渲染并部署到 Cloud Run 的清单
-- `terraform/` —— Artifact Registry、Cloud Deploy pipeline/target、服务账号/IAM、(可选)Cloud Build 触发器
+- `terraform/` —— Artifact Registry、Cloud Deploy pipeline/target、服务账号/IAM、**Workload Identity Federation**(给 GitHub Actions 免密钥认证)
 
 ## 部署
 
 ```bash
 cd terraform
 terraform init
-terraform apply        # 建 AR / Cloud Deploy / SA / IAM(不含 Cloud Run 服务本体)
-
-# 构建并推首个镜像,然后用 Cloud Deploy 发布(Cloud Run 服务由此创建)
-gcloud builds submit --config ../cloudbuild.yaml ..   # 或本地 docker build & push 后手动建 release
+terraform apply        # 建 AR / Cloud Deploy / SA / IAM / WIF(不含 Cloud Run 服务本体)
 ```
 
-> Cloud Run 服务本体由 **Cloud Deploy 的首次发布**创建并接管(不由 Terraform 管理,避免二者打架)。
+之后每次 `git push` 到 `main`,GitHub Actions 自动完成构建+部署。
 
-## ⚠️ GitHub 自动触发的一次性手动步骤
-
-`push → Cloud Build 自动跑` 需要先在控制台把仓库连接到 **Cloud Build GitHub App**(2nd-gen connection,一次性 OAuth)。连接好后,把 `terraform/variables.tf` 的 `enable_github_trigger=true` 并填 `cloudbuild_connection`,再 `terraform apply` 即可启用触发器。
+> - Cloud Run 服务本体由 **Cloud Deploy 的首次发布**创建并接管(不由 Terraform 管理,避免二者打架)。
+> - GitHub Actions 用 **Workload Identity Federation 免密钥**认证,**无需在 GitHub 存任何 SA key/secret**;provider 与 SA 已硬编码在 workflow(均非机密)。

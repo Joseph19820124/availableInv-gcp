@@ -1,0 +1,52 @@
+name: deploy
+
+# GitHub Actions 作为 CI/CD 编排器(替代 AWS CodePipeline):
+# push → 构建镜像 → 推 Artifact Registry → 创建 Cloud Deploy 发布 → rollout 到 Cloud Run
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # WIF 需要拿 OIDC 令牌
+
+env:
+  PROJECT: gwsjoseph0326
+  REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/gwsjoseph0326/availableinv/availableinv
+  PIPELINE: availableinv-pipeline
+  WIF_PROVIDER: projects/104393815626/locations/global/workloadIdentityPools/availableinv-gh-pool/providers/availableinv-gh
+  WIF_SA: availableinv-build@gwsjoseph0326.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 免密钥认证到 GCP(Workload Identity Federation)
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          docker build -t "$IMAGE:$GITHUB_SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
+
+      - name: Create Cloud Deploy release (→ Cloud Run)
+        run: |
+          gcloud deploy releases create "rel-${GITHUB_SHA::7}" \
+            --delivery-pipeline="$PIPELINE" \
+            --region="$REGION" \
+            --images="availableinv=$IMAGE:$GITHUB_SHA" \
+            --source=.
